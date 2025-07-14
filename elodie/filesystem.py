@@ -12,7 +12,7 @@ import shutil
 import time
 
 from elodie import compatability
-from elodie import geolocation
+from elodie import geolocation_offline as geolocation
 from elodie import log
 from elodie.config import load_config
 from elodie.localstorage import Db
@@ -33,7 +33,7 @@ class FileSystem(object):
             'date': '%Y-%m-%b',
             'location': '%city',
             'full_path': '%date/%album|%location|"{}"'.format(
-                            geolocation.__DEFAULT_LOCATION__
+                            "Unknown Location"
                          ),
         }
         self.cached_file_name_definition = None

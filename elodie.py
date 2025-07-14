@@ -18,7 +18,7 @@ if not verify_dependencies():
     sys.exit(1)
 
 from elodie import constants
-from elodie import geolocation
+from elodie import geolocation_offline as geolocation
 from elodie import log
 from elodie.compatability import _decode
 from elodie.config import load_config
