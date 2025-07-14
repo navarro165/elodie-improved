@@ -12,8 +12,11 @@ class Result(object):
     def append(self, row):
         id, status = row
 
-        if status:
+        if status and status != 'SKIPPED':
             self.success += 1
+        elif status == 'SKIPPED':
+            # Don't count skipped files as errors
+            pass
         else:
             self.error += 1
             self.error_items.append(id)

@@ -43,7 +43,8 @@ class ExifReader:
             return metadata
             
         except Exception as e:
-            log.error(f"Error reading EXIF data from {file_path}: {e}")
+            # Don't log every EXIF read error as it's normal for some files
+            # log.error(f"Error reading EXIF data from {file_path}: {e}")
             return {}
     
     def _get_date_taken(self, tags):

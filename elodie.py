@@ -94,9 +94,18 @@ def import_file(_file, destination, album_from_folder, trash, allow_duplicates, 
             with logger_lock:
                 session_logger.log_file_processed(_file, dest_path, 'success')
     else:
+        # More descriptive error message for duplicate files
+        if allow_duplicates:
+            error_msg = 'Processing failed'
+            status = 'failed'
+        else:
+            error_msg = 'File already exists (duplicate not allowed)'
+            status = 'skipped'
+        
+        log.warn('Skipping %s: %s' % (_file, error_msg))
         if session_logger:
             with logger_lock:
-                session_logger.log_file_processed(_file, None, 'failed', 'Processing failed')
+                session_logger.log_file_processed(_file, None, status, error_msg)
     
     if trash:
         send2trash(_file)
@@ -206,8 +215,20 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
         for current_file in files:
             dest_path = import_file(current_file, destination, album_from_folder,
                         trash, allow_duplicates, subclasses)
-            result.append((current_file, dest_path))
-            has_errors = has_errors is True or not dest_path
+            
+            # Only report as error if dest_path is None AND duplicates are allowed
+            # If duplicates are not allowed, None means skipped (not an error)
+            if dest_path:
+                result.append((current_file, dest_path))
+            elif allow_duplicates:
+                # This is a real error when duplicates are allowed
+                result.append((current_file, None))
+                has_errors = True
+            else:
+                # This is just a skipped file (duplicate not allowed)
+                result.append((current_file, 'SKIPPED'))
+            
+            has_errors = has_errors is True or (not dest_path and allow_duplicates)
             
             completed_count += 1
             if completed_count % 10 == 0 or completed_count == len(files):
@@ -228,8 +249,20 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
                 current_file = future_to_file[future]
                 try:
                     dest_path = future.result()
-                    result.append((current_file, dest_path))
-                    has_errors = has_errors is True or not dest_path
+                    
+                    # Only report as error if dest_path is None AND duplicates are allowed
+                    # If duplicates are not allowed, None means skipped (not an error)
+                    if dest_path:
+                        result.append((current_file, dest_path))
+                    elif allow_duplicates:
+                        # This is a real error when duplicates are allowed
+                        result.append((current_file, None))
+                        has_errors = True
+                    else:
+                        # This is just a skipped file (duplicate not allowed)
+                        result.append((current_file, 'SKIPPED'))
+                    
+                    has_errors = has_errors is True or (not dest_path and allow_duplicates)
                     
                     completed_count += 1
                     if completed_count % 10 == 0 or completed_count == len(files):
