@@ -153,7 +153,12 @@ class FileSystem(object):
             for this_part in parts:
                 part, mask = this_part
                 if part in ('date', 'day', 'month', 'year'):
-                    this_value = time.strftime(mask, metadata['date_taken'])
+                    # Check if filename already has a date prefix
+                    if self.filename_has_date_prefix(metadata['base_name']):
+                        # Skip adding date if it's already present
+                        this_value = ''
+                    else:
+                        this_value = time.strftime(mask, metadata['date_taken'])
                     break
                 elif part in ('location', 'city', 'state', 'country'):
                     place_name = geolocation.place_name(
@@ -643,3 +648,36 @@ class FileSystem(object):
             regex_list = compiled_list
 
         return any(regex.search(path) for regex in regex_list)
+
+    def filename_has_date_prefix(self, filename):
+        """Check if filename already has a date prefix in various formats.
+        
+        This checks for common date patterns like:
+        - YYYY-MM-DD_HH-MM-SS
+        - YYYY-MM-DD
+        - YYYYMMDD
+        - IMG_YYYYMMDD
+        - VID_YYYYMMDD
+        
+        :param str filename: The filename to check
+        :returns: bool True if date prefix is detected
+        """
+        if not filename:
+            return False
+            
+        # Common date patterns
+        date_patterns = [
+            r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}',  # YYYY-MM-DD_HH-MM-SS
+            r'^\d{4}-\d{2}-\d{2}',                     # YYYY-MM-DD
+            r'^\d{8}',                                 # YYYYMMDD
+            r'^IMG_\d{8}',                             # IMG_YYYYMMDD
+            r'^VID_\d{8}',                             # VID_YYYYMMDD
+            r'^\d{4}\d{2}\d{2}_\d{6}',                # YYYYMMDD_HHMMSS
+            r'^\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}', # YYYY-MM-DD HH.MM.SS
+        ]
+        
+        for pattern in date_patterns:
+            if re.match(pattern, filename):
+                return True
+                
+        return False

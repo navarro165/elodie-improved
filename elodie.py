@@ -5,6 +5,8 @@ import os
 import re
 import sys
 from datetime import datetime
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import click
 from send2trash import send2trash
@@ -33,8 +35,15 @@ from elodie.result import Result
 from elodie.external.pyexiftool import ExifTool
 from elodie.dependencies import get_exiftool
 from elodie import constants
+from elodie.session_log import SessionLogger
 
 FILESYSTEM = FileSystem()
+
+# Thread-safe locks for parallel processing
+filesystem_lock = threading.Lock()
+logger_lock = threading.Lock()
+session_logger = None
+
 
 def import_file(_file, destination, album_from_folder, trash, allow_duplicates):
     
@@ -43,15 +52,23 @@ def import_file(_file, destination, album_from_folder, trash, allow_duplicates):
 
     """Set file metadata and move it to destination.
     """
+    global session_logger
+    
     if not os.path.exists(_file):
         log.warn('Could not find %s' % _file)
         log.all('{"source":"%s", "error_msg":"Could not find %s"}' %
                   (_file, _file))
+        if session_logger:
+            with logger_lock:
+                session_logger.log_file_processed(_file, None, 'failed', 'Could not find file')
         return
     # Check if the source, _file, is a child folder within destination
     elif destination.startswith(os.path.abspath(os.path.dirname(_file))+os.sep):
         log.all('{"source": "%s", "destination": "%s", "error_msg": "Source cannot be in destination"}' % (
             _file, destination))
+        if session_logger:
+            with logger_lock:
+                session_logger.log_file_processed(_file, None, 'failed', 'Source cannot be in destination')
         return
 
 
@@ -59,19 +76,39 @@ def import_file(_file, destination, album_from_folder, trash, allow_duplicates):
     if not media:
         log.warn('Not a supported file (%s)' % _file)
         log.all('{"source":"%s", "error_msg":"Not a supported file"}' % _file)
+        if session_logger:
+            with logger_lock:
+                session_logger.log_file_processed(_file, None, 'failed', 'Not a supported file')
         return
 
     if album_from_folder:
         media.set_album_from_folder()
 
-    dest_path = FILESYSTEM.process_file(_file, destination,
-        media, allowDuplicate=allow_duplicates, move=False)
+    # Use thread-safe filesystem operations
+    with filesystem_lock:
+        dest_path = FILESYSTEM.process_file(_file, destination,
+            media, allowDuplicate=allow_duplicates, move=False)
+    
     if dest_path:
         log.all('%s -> %s' % (_file, dest_path))
+        if session_logger:
+            with logger_lock:
+                session_logger.log_file_processed(_file, dest_path, 'success')
+    else:
+        if session_logger:
+            with logger_lock:
+                session_logger.log_file_processed(_file, None, 'failed', 'Processing failed')
+    
     if trash:
         send2trash(_file)
 
     return dest_path or None
+
+
+def import_file_parallel(args):
+    """Wrapper for import_file to work with parallel processing."""
+    _file, destination, album_from_folder, trash, allow_duplicates = args
+    return import_file(_file, destination, album_from_folder, trash, allow_duplicates)
 
 @click.command('batch')
 @click.option('--debug', default=False, is_flag=True,
@@ -101,8 +138,10 @@ def _batch(debug):
               help='Override the value in constants.py with True.')
 @click.option('--exclude-regex', default=set(), multiple=True,
               help='Regular expression for directories or files to exclude.')
+@click.option('--workers', default=None, type=int,
+              help='Number of parallel workers (default: CPU count)')
 @click.argument('paths', nargs=-1, type=click.Path())
-def _import(destination, source, file, album_from_folder, trash, allow_duplicates, debug, exclude_regex, paths):
+def _import(destination, source, file, album_from_folder, trash, allow_duplicates, debug, exclude_regex, workers, paths):
     """Import files or directories by reading their EXIF and organizing them accordingly.
     """
     constants.debug = debug
@@ -136,11 +175,74 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
             if not FILESYSTEM.should_exclude(path, exclude_regex_list, True):
                 files.add(path)
 
-    for current_file in files:
-        dest_path = import_file(current_file, destination, album_from_folder,
-                    trash, allow_duplicates)
-        result.append((current_file, dest_path))
-        has_errors = has_errors is True or not dest_path
+    # Initialize session logger
+    global session_logger
+    session_logger = SessionLogger()
+    session_logger.set_command('import', {
+        'destination': destination,
+        'source': source,
+        'file': file,
+        'album_from_folder': album_from_folder,
+        'trash': trash,
+        'allow_duplicates': allow_duplicates,
+        'workers': workers
+    })
+    
+    # Determine number of workers (default to CPU count, max 8)
+    if workers is None:
+        workers = min(os.cpu_count(), len(files), 8)
+    
+    print("Processing %d files with %d workers..." % (len(files), workers))
+    
+    if workers == 1 or len(files) <= 1:
+        # Single-threaded processing
+        completed_count = 0
+        for current_file in files:
+            dest_path = import_file(current_file, destination, album_from_folder,
+                        trash, allow_duplicates)
+            result.append((current_file, dest_path))
+            has_errors = has_errors is True or not dest_path
+            
+            completed_count += 1
+            if completed_count % 10 == 0 or completed_count == len(files):
+                print("Processed %d/%d files" % (completed_count, len(files)))
+    else:
+        # Multi-threaded processing
+        file_args = [(current_file, destination, album_from_folder, trash, allow_duplicates) 
+                     for current_file in files]
+        
+        completed_count = 0
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            # Submit all tasks
+            future_to_file = {executor.submit(import_file_parallel, args): args[0] 
+                             for args in file_args}
+            
+            # Process completed tasks
+            for future in as_completed(future_to_file):
+                current_file = future_to_file[future]
+                try:
+                    dest_path = future.result()
+                    result.append((current_file, dest_path))
+                    has_errors = has_errors is True or not dest_path
+                    
+                    completed_count += 1
+                    if completed_count % 10 == 0 or completed_count == len(files):
+                        print("Processed %d/%d files" % (completed_count, len(files)))
+                        
+                except Exception as exc:
+                    print("Error processing %s: %s" % (current_file, exc))
+                    result.append((current_file, None))
+                    has_errors = True
+                    if session_logger:
+                        with logger_lock:
+                            session_logger.log_error(str(exc), current_file)
+    
+    print("Completed processing %d files" % len(files))
+    
+    # Finalize session log
+    log_file = session_logger.finalize_session()
+    session_logger.print_summary()
+    print("Session log saved to: %s" % log_file)
 
     result.write()
 

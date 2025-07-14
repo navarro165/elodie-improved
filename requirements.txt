@@ -7,3 +7,7 @@ tabulate==0.7.7
 Pillow==6.2.2; python_version == '2.7'
 Pillow==9.3; python_version >= '3.6'
 six==1.9
+reverse-geocoder==1.5.1
+exifread==3.3.1
+numpy>=1.11.0
+scipy>=0.17.1
