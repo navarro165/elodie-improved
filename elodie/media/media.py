@@ -14,7 +14,7 @@ import os
 import six
 
 # load modules
-from elodie.external.pyexiftool import ExifTool
+from elodie.exif_reader import ExifReader
 from elodie.media.base import Base
 
 class Media(Base):
@@ -125,7 +125,8 @@ class Media(Base):
 
         #Cache exif metadata results and use if already exists for media
         if(self.exif_metadata is None):
-            self.exif_metadata = ExifTool().get_metadata(source)
+            reader = ExifReader()
+            self.exif_metadata = reader.get_metadata(source)
 
         if not self.exif_metadata:
             return False
@@ -319,7 +320,7 @@ class Media(Base):
 
         source = self.source
 
-        status = ''
-        status = ExifTool().set_tags(tags,source)
-
-        return status != ''
+        # Note: ExifRead is read-only library, cannot set tags
+        # This functionality would need a different library like pyexiv2
+        # For now, return False to indicate tags cannot be set
+        return False
