@@ -43,14 +43,6 @@
 
 ## 🚀 Quick Start
 
-### Prerequisites
-ExifTool must be installed on your system:
-```bash
-# macOS: brew install exiftool
-# Ubuntu/Debian: sudo apt-get install libimage-exiftool-perl  
-# Fedora/RHEL: sudo dnf install perl-Image-ExifTool
-```
-
 ### Installation
 
 ```bash
@@ -220,7 +212,7 @@ Core libraries:
 
 **Slow performance?**
 - Use `--workers=4` or higher for large collections
-- Ensure ExifTool is properly installed
+- Check available CPU cores and memory
 
 **Missing location data?**
 - Photos without GPS will go to "Unknown Location"

@@ -32,8 +32,7 @@ from elodie.media.photo import Photo
 from elodie.media.video import Video
 from elodie.plugins.plugins import Plugins
 from elodie.result import Result
-from elodie.external.pyexiftool import ExifTool
-from elodie.dependencies import get_exiftool
+# ExifTool removed - using pure Python ExifRead library instead
 from elodie import constants
 from elodie.session_log import SessionLogger
 
@@ -471,10 +470,5 @@ main.add_command(_batch)
 
 
 if __name__ == '__main__':
-    #Initialize ExifTool Subprocess
-    exiftool_addedargs = [
-       u'-config',
-        u'"{}"'.format(constants.exiftool_config)
-    ]
-    with ExifTool(executable_=get_exiftool(), addedargs=exiftool_addedargs) as et:
-        main()
+    # Pure Python implementation - no ExifTool subprocess needed
+    main()
