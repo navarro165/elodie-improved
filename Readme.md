@@ -11,6 +11,7 @@
 - **2-8x faster imports** with multi-threaded processing
 - Configurable worker count with automatic CPU detection
 - Thread-safe file operations with intelligent batching
+- Optimized file discovery before thread allocation
 
 ### 📊 **Session Logging**
 - Complete audit trail for every import session

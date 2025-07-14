@@ -15,7 +15,7 @@ from tempfile import gettempdir
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))))
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))))
 
-import helper
+from . import helper
 elodie = load_source('elodie', os.path.abspath('{}/../../elodie.py'.format(os.path.dirname(os.path.realpath(__file__)))))
 
 from elodie.session_log import SessionLogger
@@ -313,3 +313,59 @@ def test_thread_safety():
     # Check results
     assert len(results) == 10
     assert len(set(results)) == 10  # All results should be unique
+
+def test_threading_optimization_file_discovery():
+    """Test that files are discovered before thread allocation."""
+    temporary_folder, folder = helper.create_working_folder()
+    temporary_folder_destination, folder_destination = helper.create_working_folder()
+
+    # Create test files
+    origins = []
+    for i in range(8):
+        origin = '%s/valid_%d.txt' % (folder, i)
+        shutil.copyfile(helper.get_file('valid.txt'), origin)
+        origins.append(origin)
+
+    helper.reset_dbs()
+    runner = CliRunner()
+    result = runner.invoke(elodie._import, [
+        '--destination', folder_destination,
+        '--workers', '8',
+        '--allow-duplicates'
+    ] + origins)
+    helper.restore_dbs()
+
+    # Check that all files were processed successfully
+    assert result.exit_code == 0, result.output
+    assert 'Processing 8 files with 8 workers' in result.output, result.output
+    assert 'Success         8' in result.output, result.output
+    
+    # Verify all files were actually imported
+    for i in range(8):
+        files_in_dest = []
+        for root, dirs, files in os.walk(folder_destination):
+            for file in files:
+                if 'valid_%d' % i in file:
+                    files_in_dest.append(file)
+        assert len(files_in_dest) > 0, "File %d not found in destination" % i
+
+    shutil.rmtree(folder)
+    shutil.rmtree(folder_destination)
+
+def test_media_class_preloading():
+    """Test that media classes are preloaded to avoid thread issues."""
+    from elodie.media.base import Base, get_all_subclasses
+    
+    # Test that get_all_subclasses returns consistent results
+    subclasses1 = get_all_subclasses(Base)
+    subclasses2 = get_all_subclasses(Base)
+    
+    # Should return the same classes
+    assert len(subclasses1) == len(subclasses2)
+    assert set(subclasses1) == set(subclasses2)
+    
+    # Should include expected media classes
+    class_names = [cls.__name__ for cls in subclasses1]
+    expected_classes = ['Photo', 'Video', 'Audio', 'Text']
+    for expected in expected_classes:
+        assert expected in class_names, f"Expected class {expected} not found"
