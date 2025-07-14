@@ -44,17 +44,11 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-Install ExifTool for your platform:
-
+ExifTool must be installed on your system:
 ```bash
-# macOS
-brew install exiftool
-
-# Ubuntu/Debian
-sudo apt-get install libimage-exiftool-perl
-
-# Fedora/RHEL
-sudo dnf install perl-Image-ExifTool
+# macOS: brew install exiftool
+# Ubuntu/Debian: sudo apt-get install libimage-exiftool-perl  
+# Fedora/RHEL: sudo dnf install perl-Image-ExifTool
 ```
 
 ### Installation
@@ -62,22 +56,19 @@ sudo dnf install perl-Image-ExifTool
 ```bash
 git clone https://github.com/navarro165/elodie-improved.git
 cd elodie-improved
+```
+
+### Usage
+
+```bash
+# The shell script handles everything automatically (venv, dependencies, etc.)
+./run_elodie.sh import --destination="/organized/photos" /source/photos
+
+# Or use the Python script directly
 python3 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-### Basic Usage
-
-```bash
-# Organize photos with automatic parallel processing
 ./elodie.py import --destination="/organized/photos" /source/photos
-
-# Use specific number of workers for maximum performance
-./elodie.py import --destination="/organized/photos" --workers=6 /source/photos
-
-# Use the simplified shell wrapper
-./run_elodie.sh /source/photos /organized/photos
 ```
 
 ## 📁 How It Works
