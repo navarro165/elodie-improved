@@ -129,7 +129,7 @@ class Media(Base):
             self.exif_metadata = reader.get_metadata(source)
 
         if not self.exif_metadata:
-            return False
+            return None
 
         return self.exif_metadata
 

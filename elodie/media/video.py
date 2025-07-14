@@ -68,6 +68,9 @@ class Video(Media):
         seconds_since_epoch = min(os.path.getmtime(source), os.path.getctime(source))  # noqa
 
         exif = self.get_exiftool_attributes()
+        if not exif:
+            return time.gmtime(seconds_since_epoch)
+        
         for date_key in self.exif_map['date_taken']:
             if date_key in exif:
                 # Example date strings we want to parse
