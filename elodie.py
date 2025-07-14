@@ -44,7 +44,7 @@ logger_lock = threading.Lock()
 session_logger = None
 
 
-def import_file(_file, destination, album_from_folder, trash, allow_duplicates):
+def import_file(_file, destination, album_from_folder, trash, allow_duplicates, subclasses):
     
     _file = _decode(_file)
     destination = _decode(destination)
@@ -71,7 +71,7 @@ def import_file(_file, destination, album_from_folder, trash, allow_duplicates):
         return
 
 
-    media = Media.get_class_by_file(_file, get_all_subclasses())
+    media = Media.get_class_by_file(_file, subclasses)
     if not media:
         log.warn('Not a supported file (%s)' % _file)
         log.all('{"source":"%s", "error_msg":"Not a supported file"}' % _file)
@@ -106,8 +106,8 @@ def import_file(_file, destination, album_from_folder, trash, allow_duplicates):
 
 def import_file_parallel(args):
     """Wrapper for import_file to work with parallel processing."""
-    _file, destination, album_from_folder, trash, allow_duplicates = args
-    return import_file(_file, destination, album_from_folder, trash, allow_duplicates)
+    _file, destination, album_from_folder, trash, allow_duplicates, subclasses = args
+    return import_file(_file, destination, album_from_folder, trash, allow_duplicates, subclasses)
 
 @click.command('batch')
 @click.option('--debug', default=False, is_flag=True,
@@ -150,6 +150,9 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
     destination = _decode(destination)
     destination = os.path.abspath(os.path.expanduser(destination))
 
+    # Pre-load all media classes to avoid thread safety issues
+    subclasses = get_all_subclasses(Base)
+    
     files = set()
     paths = set(paths)
     if source:
@@ -166,6 +169,7 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
 
     exclude_regex_list = set(exclude_regex)
 
+    # Read all files first before starting any parallel processing
     for path in paths:
         path = os.path.expanduser(path)
         if os.path.isdir(path):
@@ -173,6 +177,9 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
         else:
             if not FILESYSTEM.should_exclude(path, exclude_regex_list, True):
                 files.add(path)
+    
+    # Convert to sorted list for consistent processing order
+    files = sorted(list(files))
 
     # Initialize session logger
     global session_logger
@@ -198,7 +205,7 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
         completed_count = 0
         for current_file in files:
             dest_path = import_file(current_file, destination, album_from_folder,
-                        trash, allow_duplicates)
+                        trash, allow_duplicates, subclasses)
             result.append((current_file, dest_path))
             has_errors = has_errors is True or not dest_path
             
@@ -207,7 +214,7 @@ def _import(destination, source, file, album_from_folder, trash, allow_duplicate
                 print("Processed %d/%d files" % (completed_count, len(files)))
     else:
         # Multi-threaded processing
-        file_args = [(current_file, destination, album_from_folder, trash, allow_duplicates) 
+        file_args = [(current_file, destination, album_from_folder, trash, allow_duplicates, subclasses) 
                      for current_file in files]
         
         completed_count = 0
